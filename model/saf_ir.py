@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .backbone import NAFStyleBackbone
 from .degradation import (
@@ -52,33 +53,34 @@ class FrequencyGuidance(nn.Module):
     def __init__(self, channels=48):
         super().__init__()
 
-        self.projection = nn.Conv2d(
-            channels,
-            channels,
-            kernel_size=1,
+        self.projection = nn.Sequential(
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=3,
+                padding=1
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=1
+            )
         )
 
     def forward(self, x):
-        original_dtype = x.dtype
-
-        x_float = x.float()
-
-        frequency = torch.fft.rfft2(
-            x_float,
-            norm="ortho",
+        # Low-frequency component
+        low = F.avg_pool2d(
+            x,
+            kernel_size=3,
+            stride=1,
+            padding=1
         )
 
-        magnitude = torch.abs(frequency)
+        # High-frequency residual
+        high = x - low
 
-        magnitude = torch.fft.irfft2(
-            magnitude,
-            s=x.shape[-2:],
-            norm="ortho",
-        )
-
-        magnitude = magnitude.to(original_dtype)
-
-        return self.projection(magnitude)
+        return self.projection(high)
 
 
 class AdaptiveFeatureFusion(nn.Module):
