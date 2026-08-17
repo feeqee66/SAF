@@ -59,8 +59,12 @@ class FrequencyGuidance(nn.Module):
         )
 
     def forward(self, x):
+        original_dtype = x.dtype
+
+        x_float = x.float()
+
         frequency = torch.fft.rfft2(
-            x,
+            x_float,
             norm="ortho",
         )
 
@@ -71,6 +75,8 @@ class FrequencyGuidance(nn.Module):
             s=x.shape[-2:],
             norm="ortho",
         )
+
+        magnitude = magnitude.to(original_dtype)
 
         return self.projection(magnitude)
 
