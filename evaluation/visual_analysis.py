@@ -1081,7 +1081,294 @@ def main():
 
     print("=" * 70)
 
+# ============================================================
+# NO-GT STRUCTURAL ANALYSIS
+# ============================================================
 
+def generate_structural_analysis(input_dir, restored_dir, output_dir):
+    """
+    Generate explainability-oriented structural maps when
+    ground truth is unavailable.
+
+    This does NOT claim reconstruction error.
+    It visualizes local structural/detail changes between
+    the degraded input and restored output.
+    """
+
+    input_dir = Path(input_dir)
+    restored_dir = Path(restored_dir)
+    output_dir = Path(output_dir)
+
+    structural_dir = output_dir / "structural_maps"
+    comparison_dir = output_dir / "comparisons"
+
+    structural_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    comparison_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    input_files = sorted(
+        input_dir.glob("*.npy")
+    )
+
+    generated = 0
+
+    for input_path in input_files:
+
+        restored_path = (
+            restored_dir /
+            input_path.name
+        )
+
+        if not restored_path.exists():
+            continue
+
+        degraded = load_image(input_path)
+        restored = load_image(restored_path)
+
+        # ----------------------------------------------------
+        # Bring degraded image to restored resolution
+        # ----------------------------------------------------
+
+        degraded_display = resize_for_display(
+            degraded,
+            restored.shape
+        )
+
+        # ----------------------------------------------------
+        # Gradient magnitude
+        # ----------------------------------------------------
+
+        def gradient_magnitude(image):
+
+            gx = np.gradient(
+                image,
+                axis=1
+            )
+
+            gy = np.gradient(
+                image,
+                axis=0
+            )
+
+            magnitude = np.sqrt(
+                gx ** 2 +
+                gy ** 2
+            )
+
+            return magnitude
+
+        input_gradient = gradient_magnitude(
+            degraded_display
+        )
+
+        restored_gradient = gradient_magnitude(
+            restored
+        )
+
+        # ----------------------------------------------------
+        # Structural change map
+        # ----------------------------------------------------
+
+        structural_change = np.abs(
+            restored_gradient -
+            input_gradient
+        )
+
+        max_value = structural_change.max()
+
+        if max_value > 0:
+            structural_map = (
+                structural_change /
+                max_value
+            )
+        else:
+            structural_map = (
+                np.zeros_like(
+                    structural_change
+                )
+            )
+
+        # ----------------------------------------------------
+        # Save numerical structural map
+        # ----------------------------------------------------
+
+        np.save(
+            structural_dir /
+            input_path.name,
+            structural_map.astype(
+                np.float32
+            )
+        )
+
+        # ----------------------------------------------------
+        # Generate visual explanation
+        # ----------------------------------------------------
+
+        figure = plt.figure(
+            figsize=(12, 4)
+        )
+
+        ax1 = figure.add_subplot(
+            1, 3, 1
+        )
+
+        ax1.imshow(
+            degraded_display,
+            cmap="gray",
+            vmin=0,
+            vmax=1
+        )
+
+        ax1.set_title(
+            "Degraded Input"
+        )
+
+        ax1.axis("off")
+
+        ax2 = figure.add_subplot(
+            1, 3, 2
+        )
+
+        ax2.imshow(
+            restored,
+            cmap="gray",
+            vmin=0,
+            vmax=1
+        )
+
+        ax2.set_title(
+            "Restored Output"
+        )
+
+        ax2.axis("off")
+
+        ax3 = figure.add_subplot(
+            1, 3, 3
+        )
+
+        ax3.imshow(
+            structural_map,
+            cmap="inferno",
+            vmin=0,
+            vmax=1
+        )
+
+        ax3.set_title(
+            "Structural Change Map"
+        )
+
+        ax3.axis("off")
+
+        figure.suptitle(
+            "SAF — Explainability View"
+        )
+
+        figure.tight_layout()
+
+        figure.savefig(
+            comparison_dir /
+            f"{input_path.stem}_analysis.png",
+            dpi=150,
+            bbox_inches="tight"
+        )
+
+        plt.close(
+            figure
+        )
+
+        generated += 1
+
+    # --------------------------------------------------------
+    # Explanation report
+    # --------------------------------------------------------
+
+    report_path = (
+        output_dir /
+        "explanation.txt"
+    )
+
+    with open(
+        report_path,
+        "w"
+    ) as file:
+
+        file.write(
+            "SAF STRUCTURAL EXPLAINABILITY REPORT\n"
+        )
+
+        file.write(
+            "=" * 60 +
+            "\n\n"
+        )
+
+        file.write(
+            "Mode: No Ground Truth\n\n"
+        )
+
+        file.write(
+            "The structural change map highlights regions "
+            "where local image gradients changed between "
+            "the degraded input and the restored output.\n\n"
+        )
+
+        file.write(
+            "Interpretation:\n"
+        )
+
+        file.write(
+            "- Brighter regions indicate stronger "
+            "structural/detail change.\n"
+        )
+
+        file.write(
+            "- Darker regions indicate relatively "
+            "little structural change.\n"
+        )
+
+        file.write(
+            "- This map is an explainability visualization "
+            "and NOT a reconstruction-error or confidence map.\n"
+        )
+
+        file.write(
+            "- Ground-truth-dependent metrics such as PSNR "
+            "and SSIM are therefore not claimed here.\n\n"
+        )
+
+        file.write(
+            f"Structural analyses generated: {generated}\n"
+        )
+
+    print()
+    print("=" * 70)
+    print("STRUCTURAL EXPLAINABILITY")
+    print("=" * 70)
+
+    print(
+        "Analyses generated:",
+        generated
+    )
+
+    print(
+        "Structural maps:",
+        structural_dir
+    )
+
+    print(
+        "Visual comparisons:",
+        comparison_dir
+    )
+
+    print(
+        "Explanation:",
+        report_path
+    )
 # ============================================================
 # ENTRY POINT
 # ============================================================

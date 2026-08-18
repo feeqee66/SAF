@@ -1,11 +1,13 @@
 from pathlib import Path
 import csv
 import time
-
+import sys
+import os
 import numpy as np
 import torch
 import torch.nn as nn
 from skimage.metrics import structural_similarity
+from visual_analysis import generate_structural_analysis
 
 
 # ============================================================
@@ -518,11 +520,14 @@ def main():
 
     print()
 
-    input_dir = Path(
-        input(
-            "Enter test/input .npy folder: "
-        ).strip().strip('"')
-    )
+    if len(sys.argv) != 3:
+        print(
+            "Usage: python run.py <input-dir> <output-dir>"
+        )
+        sys.exit(1)
+
+    input_dir = Path(sys.argv[1]).resolve()
+    output_dir = Path(sys.argv[2]).resolve()
 
     if not input_dir.exists():
 
@@ -530,51 +535,21 @@ def main():
             f"\nInput folder not found:\n"
             f"{input_dir}"
         )
-
     # --------------------------------------------------------
-    # OPTIONAL GT
-    # --------------------------------------------------------
-
-    gt_text = input(
-        "\nEnter ground-truth folder "
-        "(press Enter if unavailable): "
-    ).strip().strip('"')
-
-    if gt_text:
-
-        gt_dir = Path(
-            gt_text
-        )
-
-        if not gt_dir.exists():
-
-            raise FileNotFoundError(
-                f"\nGT folder not found:\n"
-                f"{gt_dir}"
-            )
-
-    else:
-
-        gt_dir = None
-
-    # --------------------------------------------------------
-    # OUTPUT DIRECTORY
+    # OPTIONAL GT — NO USER INTERACTION
     # --------------------------------------------------------
 
-    output_text = input(
-        "\nEnter output folder "
-        "(press Enter for SAF/deployment_results): "
-    ).strip().strip('"')
+    gt_dir = None
 
-    if output_text:
+    # If a GT directory is supplied through the environment,
+    # use it. Otherwise run normally without GT.
+    gt_env = os.environ.get("SAF_GT_DIR")
 
-        output_dir = Path(
-            output_text
-        )
+    if gt_env:
+        candidate_gt = Path(gt_env).resolve()
 
-    else:
-
-        output_dir = OUTPUT_DIR
+        if candidate_gt.exists():
+            gt_dir = candidate_gt
 
     output_dir.mkdir(
         parents=True,
@@ -1020,6 +995,35 @@ def main():
     print(
         summary_path
     )
+        # ========================================================
+    # STRUCTURAL EXPLAINABILITY
+    # ========================================================
+
+    if evaluated == 0:
+
+        try:
+
+            visual_output_dir = (
+                output_dir /
+                "visual_analysis"
+            )
+
+            generate_structural_analysis(
+                input_dir,
+                output_dir,
+                visual_output_dir
+            )
+
+        except Exception as error:
+
+            print()
+            print(
+                "WARNING: Structural analysis failed:"
+            )
+
+            print(
+                error
+            )
 
     print("=" * 70)
 
