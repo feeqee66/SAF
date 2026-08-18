@@ -1,27 +1,67 @@
 from pathlib import Path
+import argparse
 import csv
 
 import numpy as np
+from PIL import Image
 from scipy.ndimage import gaussian_filter
 
 
 # ============================================================
-# HIGH-FREQUENCY EXTRACTION
+# LOAD NPY
+# ============================================================
+
+def load_npy_image(path):
+    image = np.load(path).astype(np.float32)
+    image = np.squeeze(image)
+
+    if image.ndim != 2:
+        raise ValueError(
+            f"Expected 2D image, got {image.shape} "
+            f"for {path}"
+        )
+
+    return np.clip(image, 0.0, 1.0)
+
+
+# ============================================================
+# BICUBIC 2x
+# ============================================================
+
+def bicubic_upscale(image, target_shape):
+
+    target_h, target_w = target_shape
+
+    image_uint8 = np.clip(
+        image * 255.0,
+        0,
+        255
+    ).astype(np.uint8)
+
+    pil_image = Image.fromarray(
+        image_uint8,
+        mode="L"
+    )
+
+    upscaled = pil_image.resize(
+        (target_w, target_h),
+        resample=Image.Resampling.BICUBIC
+    )
+
+    return (
+        np.asarray(
+            upscaled,
+            dtype=np.float32
+        )
+        / 255.0
+    )
+
+
+# ============================================================
+# HIGH FREQUENCY
 # ============================================================
 
 def high_frequency(image, sigma=2.0):
-    """
-    Extract high-frequency content using:
-
-        High frequency = Image - Gaussian blurred image
-
-    Larger values indicate stronger fine-detail content.
-    """
-
-    image = np.asarray(
-        image,
-        dtype=np.float32
-    )
 
     blurred = gaussian_filter(
         image,
@@ -35,17 +75,9 @@ def high_frequency(image, sigma=2.0):
 # FREQUENCY ENERGY
 # ============================================================
 
-def frequency_energy(image, sigma=2.0):
-    """
-    Calculate high-frequency energy.
+def frequency_energy(image):
 
-    Mean squared high-frequency response.
-    """
-
-    hf = high_frequency(
-        image,
-        sigma=sigma
-    )
+    hf = high_frequency(image)
 
     return float(
         np.mean(hf ** 2)
@@ -53,120 +85,88 @@ def frequency_energy(image, sigma=2.0):
 
 
 # ============================================================
-# FREQUENCY PRESERVATION
+# FREQUENCY METRICS
 # ============================================================
 
-def frequency_preservation(pred, gt, sigma=2.0):
-    """
-    Compare high-frequency energy of prediction
-    against ground truth.
+def frequency_preservation(
+    prediction,
+    gt
+):
 
-    1.0 = perfect energy match.
-
-    Lower values indicate stronger loss or distortion
-    of high-frequency content.
-    """
-
-    pred_energy = frequency_energy(
-        pred,
-        sigma=sigma
+    prediction_energy = frequency_energy(
+        prediction
     )
 
     gt_energy = frequency_energy(
-        gt,
-        sigma=sigma
+        gt
     )
 
     if gt_energy == 0:
         return 1.0
 
-    ratio = pred_energy / gt_energy
-
     return float(
-        min(ratio, 1.0)
+        min(
+            prediction_energy / gt_energy,
+            1.0
+        )
     )
 
 
-# ============================================================
-# FREQUENCY ERROR
-# ============================================================
+def frequency_error(
+    prediction,
+    gt
+):
 
-def frequency_error(pred, gt, sigma=2.0):
-    """
-    Absolute difference between normalized
-    high-frequency energies.
-    """
-
-    pred_energy = frequency_energy(
-        pred,
-        sigma=sigma
+    prediction_energy = frequency_energy(
+        prediction
     )
 
     gt_energy = frequency_energy(
-        gt,
-        sigma=sigma
+        gt
     )
 
     if gt_energy == 0:
         return 0.0
 
     return float(
-        abs(pred_energy - gt_energy)
+        abs(
+            prediction_energy
+            -
+            gt_energy
+        )
         /
         gt_energy
     )
 
 
 # ============================================================
-# LOAD IMAGE
+# MAIN
 # ============================================================
 
-def load_npy_image(path):
-
-    image = np.load(path).astype(
-        np.float32
-    )
-
-    image = np.squeeze(image)
-
-    if image.ndim != 2:
-        raise ValueError(
-            f"Expected 2D image, got "
-            f"{image.shape} for {path}"
-        )
-
-    return np.clip(
-        image,
-        0.0,
-        1.0
-    )
-
-
-# ============================================================
-# EVALUATE DIRECTORY
-# ============================================================
-
-def evaluate_frequency(
-    prediction_dir,
+def evaluate_bicubic_frequency(
+    lr_dir,
     gt_dir,
+    subset_dir,
     output_csv
 ):
 
-    prediction_dir = Path(
-        prediction_dir
-    )
+    lr_dir = Path(lr_dir)
+    gt_dir = Path(gt_dir)
+    subset_dir = Path(subset_dir)
+    output_csv = Path(output_csv)
 
-    gt_dir = Path(
-        gt_dir
-    )
+    # --------------------------------------------------------
+    # Model 1 filenames define the exact evaluation subset
+    # --------------------------------------------------------
 
-    output_csv = Path(
-        output_csv
-    )
-
-    prediction_files = {
+    subset_files = {
         p.stem: p
-        for p in prediction_dir.glob("*.npy")
+        for p in subset_dir.glob("*.npy")
+    }
+
+    lr_files = {
+        p.stem: p
+        for p in lr_dir.glob("*.npy")
     }
 
     gt_files = {
@@ -175,15 +175,26 @@ def evaluate_frequency(
     }
 
     common_ids = sorted(
-        set(prediction_files)
+        set(subset_files.keys())
         &
-        set(gt_files)
+        set(lr_files.keys())
+        &
+        set(gt_files.keys())
     )
 
     if not common_ids:
         raise RuntimeError(
-            "No matching prediction/GT files."
+            "No matching files found."
         )
+
+    print("=" * 70)
+    print("BICUBIC FREQUENCY PRESERVATION")
+    print("=" * 70)
+
+    print(
+        f"Evaluation images : "
+        f"{len(common_ids)}"
+    )
 
     total_preservation = 0.0
     total_error = 0.0
@@ -199,28 +210,44 @@ def evaluate_frequency(
         start=1
     ):
 
-        pred = load_npy_image(
-            prediction_files[image_id]
+        lr = load_npy_image(
+            lr_files[image_id]
         )
 
         gt = load_npy_image(
             gt_files[image_id]
         )
 
-        if pred.shape != gt.shape:
+        # ----------------------------------------------------
+        # Bicubic 2x
+        # ----------------------------------------------------
+
+        bicubic = bicubic_upscale(
+            lr,
+            gt.shape
+        )
+
+        # ----------------------------------------------------
+        # Check shape
+        # ----------------------------------------------------
+
+        if bicubic.shape != gt.shape:
             raise RuntimeError(
-                f"Shape mismatch for "
-                f"{image_id}: "
-                f"{pred.shape} vs {gt.shape}"
+                f"Shape mismatch for {image_id}: "
+                f"{bicubic.shape} vs {gt.shape}"
             )
 
+        # ----------------------------------------------------
+        # Metrics
+        # ----------------------------------------------------
+
         preservation = frequency_preservation(
-            pred,
+            bicubic,
             gt
         )
 
         error = frequency_error(
-            pred,
+            bicubic,
             gt
         )
 
@@ -242,16 +269,16 @@ def evaluate_frequency(
             )
 
     # ========================================================
-    # AVERAGES
+    # AVERAGE
     # ========================================================
 
-    average_preservation = (
+    avg_preservation = (
         total_preservation
         /
         len(common_ids)
     )
 
-    average_error = (
+    avg_error = (
         total_error
         /
         len(common_ids)
@@ -263,28 +290,28 @@ def evaluate_frequency(
 
     print()
     print("=" * 70)
-    print("FREQUENCY PRESERVATION EVALUATION")
+    print("BICUBIC FREQUENCY EVALUATION COMPLETE")
     print("=" * 70)
 
     print(
-        f"Images evaluated : "
+        f"Images evaluated       : "
         f"{len(common_ids)}"
     )
 
     print(
         f"Frequency preservation : "
-        f"{average_preservation:.6f}"
+        f"{avg_preservation:.6f}"
     )
 
     print(
-        f"Frequency error         : "
-        f"{average_error:.6f}"
+        f"Frequency error        : "
+        f"{avg_error:.6f}"
     )
 
     print("=" * 70)
 
     # ========================================================
-    # SAVE CSV
+    # SAVE
     # ========================================================
 
     output_csv.parent.mkdir(
@@ -316,11 +343,6 @@ def evaluate_frequency(
         f"{output_csv}"
     )
 
-    return (
-        average_preservation,
-        average_error
-    )
-
 
 # ============================================================
 # COMMAND LINE
@@ -328,21 +350,13 @@ def evaluate_frequency(
 
 if __name__ == "__main__":
 
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description=(
-            "Evaluate high-frequency "
-            "preservation."
-        )
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--prediction",
-        required=True,
-        help=(
-            "Directory containing "
-            "prediction/restored .npy files."
+        "--lr",
+        default=(
+            r"C:\Users\apurva vivobook"
+            r"\Downloads\train\train\NoisyLR"
         )
     )
 
@@ -351,23 +365,31 @@ if __name__ == "__main__":
         default=(
             r"C:\Users\apurva vivobook"
             r"\Downloads\train\train\GT"
-        ),
-        help="GT directory."
+        )
+    )
+
+    parser.add_argument(
+        "--subset",
+        required=True,
+        help=(
+            "Model 1 output folder. "
+            "Its filenames define the evaluation subset."
+        )
     )
 
     parser.add_argument(
         "--output",
         default=(
             "evaluation/results/"
-            "model1_frequency.csv"
-        ),
-        help="Output CSV."
+            "bicubic_frequency.csv"
+        )
     )
 
     args = parser.parse_args()
 
-    evaluate_frequency(
-        prediction_dir=args.prediction,
+    evaluate_bicubic_frequency(
+        lr_dir=args.lr,
         gt_dir=args.gt,
+        subset_dir=args.subset,
         output_csv=args.output
     )
