@@ -1,348 +1,325 @@
 # SAF
+### KLA — AI-Based Restoration of Degraded Images
 
-Offline AI-based restoration and super-resolution of degraded grayscale images via learned residual reconstruction.
+SAF is an offline grayscale image restoration system. It reconstructs restored images at 2× resolution from degraded low-resolution `.npy` inputs using a residual CNN with PixelShuffle upsampling.
 
-## Overview
+| | |
+|---|---|
+| **Task** | KLA — AI-Based Restoration of Degraded Images |
+| **Model** | Residual CNN + PixelShuffle ×2 |
+| **Parameters** | 776,705 |
+| **Input** | 128 × 128 grayscale |
+| **Output** | 256 × 256 grayscale |
+| **Framework** | PyTorch |
+| **Execution** | Offline, single command |
 
-SAF addresses the KLA problem statement for AI-based restoration of degraded images. The system takes low-resolution, degraded grayscale images and reconstructs high-resolution versions using a learned Residual CNN architecture with sub-pixel convolution (PixelShuffle).
+---
 
-Input images are expected as 128×128 grayscale NumPy arrays (.npy format). The model produces 256×256 grayscale reconstructions, achieving a 2× upsampling factor. All inference is performed locally with no internet access, API calls, or external model downloads. The system supports both CPU and NVIDIA GPU execution.
+## 1. Overview
 
-Beyond basic inference, SAF includes a comprehensive evaluation pipeline for measuring reconstruction quality when ground-truth images are available, along with visual analysis tooling for spatial error inspection and high-error region identification.
+SAF accepts a directory of degraded `.npy` grayscale images and produces restored `.npy` outputs at double the input resolution. The deployed checkpoint (`models/cnn_l1_best_deployed.pt`) is bundled with the repository, and the entire pipeline runs offline with no API keys, no internet access, and no external model downloads.
 
-## Key Features
-
-- **Offline inference**: No internet, APIs, or external model downloads required
-- **Grayscale .npy I/O**: Native support for NumPy array format
-- **2× super-resolution**: 128×128 → 256×256 upsampling
-- **Residual CNN architecture**: 776,705 parameters, 8 residual blocks with PixelShuffle
-- **GPU and CPU compatible**: Automatic device detection; NVIDIA GPU acceleration supported
-- **Deterministic deployment**: Complete model weights included locally
-- **Evaluation pipeline**: Objective metrics (PSNR, SSIM, MAE, MSE, edge error) when ground truth is available
-- **Visual error analysis**: Spatial error heatmaps and high-error region inspection
-- **Reproducible**: Single-command execution with documented inputs/outputs
-
-## System Pipeline
-
-### Inference Pipeline (Run)
-
-```
-Degraded .npy (128×128)
-        ↓
-Input validation & normalization
-        ↓
-Residual CNN feature extraction
-        ↓
-Feature refinement
-        ↓
-PixelShuffle (2×)
-        ↓
-Output convolution & reconstruction
-        ↓
-Value clipping to [0, 1]
-        ↓
-Restored .npy (256×256)
-```
-
-### Evaluation Pipeline (Optional)
-
-When paired ground-truth images are provided:
-
-```
-Restored image + Ground-truth image
-        ↓
-Metric computation (PSNR, SSIM, MAE, MSE, edge error)
-        ↓
-Spatial error analysis
-        ↓
-Error heatmap generation
-        ↓
-High-error region detection & cropping
-        ↓
-Results & visual analysis outputs
-```
-
-## Model Architecture
-
-**Architecture**: Residual CNN + PixelShuffle ×2
-
-**Specifications**:
-- Input channels: 1 (grayscale)
-- Input resolution: 128×128
-- Output resolution: 256×256
-- Upsampling scale factor: 2×
-- Feature channels: 64
-- Residual blocks: 8
-- Total parameters: 776,705
-- Framework: PyTorch
-- Checkpoint: `models/cnn_l1_best_deployed.pt`
-
-**Architecture Breakdown**:
-1. Convolutional head (1 → 64 channels)
-2. Eight residual blocks with skip connections
-3. Feature refinement convolution
-4. Sub-pixel convolution (PixelShuffle) with scale factor 2
-5. Final reconstruction convolution (64 → 1 channel)
-
-The model was trained on L1 loss and the checkpoint includes deployment metadata (format version, architecture type, training epoch, validation PSNR, validation SSIM).
-
-## Input and Output Format
-
-### Input
-
-- **Format**: `.npy` files (NumPy binary format)
-- **Color space**: Grayscale (single channel)
-- **Resolution**: 128×128 pixels
-- **Data type**: Typically float32 in range [0, 1]
-- **Handling**: All `.npy` files in the input directory are processed
-
-### Output
-
-- **Format**: `.npy` files (NumPy binary format)
-- **Color space**: Grayscale (single channel)
-- **Resolution**: 256×256 pixels
-- **Data type**: float32
-- **Value range**: [0, 1] (clipped; NaN and Inf safeguarded)
-- **Naming**: Filenames preserved from input
-- **Location**: Output directory specified via command-line argument
-
-### Example
-
-If the input directory contains:
-```
-input/
-├── 000001.npy
-├── 000002.npy
-└── 000003.npy
-```
-
-The output directory will contain:
-```
-output/
-├── 000001.npy
-├── 000002.npy
-└── 000003.npy
-```
-
-## Installation
-
-### Requirements
-
-- Python 3.8 or higher
-- PyTorch 1.9+
-- NumPy
-- (Optional) CUDA 11.0+ for GPU acceleration
-
-### Setup
-
-1. Clone or download the repository:
-   ```bash
-   git clone <repo-url>
-   cd SAF
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-   All required packages and model weights are included in the repository. No external downloads are necessary.
-
-3. Verify the deployment checkpoint is present:
-   ```
-   models/cnn_l1_best_deployed.pt
-   ```
-
-## Running the Submission
-
-### Official Command
+Judge-facing execution is a single command:
 
 ```bash
 python run.py <input-dir> <output-dir>
 ```
 
-This is the single command required to run the complete inference pipeline.
+No ground-truth data is required to run the submission. When ground truth is available, SAF additionally computes quantitative image-quality metrics. When it is not, SAF produces a structural explainability visualization instead of any correctness claim.
 
-### Examples
+---
 
-**Linux/macOS**:
-```bash
-python run.py "./test_input" "./test_output"
+## 2. Key Capabilities
+
+- One-command offline restoration of `.npy` inputs to `.npy` outputs
+- 2× resolution restoration via a residual CNN + PixelShuffle architecture
+- Output validation: grayscale, `[0, 1]` range, NaN/Inf handling
+- Filename-preserving batch processing
+- Optional quantitative evaluation (PSNR, SSIM, MAE, MSE, Edge Error) when GT is supplied
+- Structural explainability visualization when GT is not supplied
+- NVIDIA GPU compatible, with CPU fallback in the evaluation pipeline
+
+---
+
+## 3. System Architecture
+
+```
+Input (128×128 grayscale)
+        │
+        ▼
+Convolutional feature extraction
+        │
+        ▼
+Residual blocks (×8, 64 channels)
+        │
+        ▼
+Feature refinement
+        │
+        ▼
+PixelShuffle ×2 upsampling
+        │
+        ▼
+Output convolution
+        │
+        ▼
+Restored output (256×256 grayscale)
 ```
 
-**Windows**:
-```bash
-python run.py "C:\path\to\input" "C:\path\to\output"
+<details>
+<summary><strong>Architecture characteristics</strong></summary>
+
+- Grayscale, single-channel input and output
+- Residual CNN backbone
+- 8 residual blocks
+- 64 feature channels
+- PixelShuffle ×2 subpixel upsampling
+- 776,705 trainable parameters
+
+</details>
+
+---
+
+## 4. Model Specification
+
+| Property | Value |
+|---|---|
+| Checkpoint | `models/cnn_l1_best_deployed.pt` |
+| Architecture | Residual CNN + PixelShuffle ×2 |
+| Parameters | 776,705 |
+| Scale factor | 2× |
+| Input resolution | 128 × 128 |
+| Output resolution | 256 × 256 |
+| Output dtype | float32 |
+| Output range | [0, 1] |
+
+---
+
+## 5. Input and Output
+
+**Input**
+- `.npy` files
+- Grayscale
+- Expected low-resolution input: 128 × 128
+
+**Output**
+- `.npy` files
+- Grayscale, float32
+- Resolution: 256 × 256
+- Values constrained to `[0, 1]`
+- No NaN or Inf values
+
+Output filenames match input filenames exactly.
+
+```
+input:  000281.npy
+output: 000281.npy
 ```
 
-### Execution
+---
 
-- The system automatically detects input files in `<input-dir>`
-- Creates `<output-dir>` if it does not exist
-- Processes all `.npy` files in parallel or sequentially depending on implementation
-- Outputs restored images with preserved filenames
-- Terminates with status code 0 on success
-
-**No prompts, no configuration, no manual setup required.**
-
-## Output
-
-After running `python run.py <input-dir> <output-dir>`, the output directory contains:
-
-- **Restored images**: One `.npy` file per input image, with the same filename
-- **Metrics (if ground truth provided)**: CSV file with objective metrics and visual analysis results
-- **Error analysis (if ground truth provided)**: Spatial error maps and high-error region crops
-
-The deployment pipeline always produces the restored `.npy` files. Evaluation and visual analysis outputs are generated when ground-truth images are available during the evaluation phase.
-
-## Evaluation and Visual Analysis
-
-SAF includes a comprehensive evaluation pipeline in the `evaluation/` directory. This pipeline is distinct from the deployment pipeline but shares the same trained model.
-
-### When Ground Truth Is Available
-
-The evaluation system can compute objective metrics:
-- **PSNR** (Peak Signal-to-Noise Ratio)
-- **SSIM** (Structural Similarity Index)
-- **MAE** (Mean Absolute Error)
-- **MSE** (Mean Squared Error)
-- **Edge Error** (reconstruction accuracy on image edges)
-
-And generate visual analysis:
-- Side-by-side comparisons: degraded input, restored output, ground truth
-- **Spatial error heatmaps**: Pixel-wise absolute difference between restored and ground truth
-- **High-error region detection**: Automatic cropping and analysis of regions where reconstruction error is highest
-- **Frequency-domain analysis**: FFT-based structural validation
-- **Perceptual metrics**: LPIPS evaluation when applicable
-
-Error heatmaps visualize:
-```
-E(x,y) = |Restored(x,y) - Ground Truth(x,y)|
-```
-
-This is **not** a model confidence map; it is ground-truth error computed only when paired ground-truth data is available.
-
-### When Ground Truth Is Unavailable
-
-- The deployment pipeline produces restored `.npy` files normally
-- Objective error heatmaps cannot be generated (no ground truth to compare against)
-- Quality assessment cannot be performed quantitatively
-
-This distinction is important: the system does not fabricate error measurements or confidence scores without ground truth.
-
-## Results
-
-### Paired Image Evaluation (10-image test set)
-
-When evaluated on 10 paired (degraded, ground-truth) image pairs:
-
-| Metric | Value |
-|--------|-------|
-| PSNR | 27.9887 dB |
-| SSIM | 0.7367 |
-| MAE | 0.030892 |
-| MSE | 0.002488 |
-| Edge Error | 0.034087 |
-| Pairs evaluated | 10 |
-
-### Inference Performance (Deployment test)
-
-Deployment test on 400 images without ground truth:
-
-| Metric | Value |
-|--------|-------|
-| Images processed | 400 |
-| Output resolution | 256×256 |
-| Throughput | 4.3–4.5 images/sec |
-| Hardware | NVIDIA GPU (tested environment) |
-
-**Note**: This inference speed is measured on the team's test machine. Performance varies based on hardware (GPU model, driver version, CPU, RAM). CPU-only inference will be significantly slower.
-
-## Offline / Deployment Design
-
-SAF is designed for offline, deterministic deployment:
-
-- **No internet connectivity required**: The system operates completely locally
-- **No API calls**: All inference is performed by the on-device model
-- **No external downloads**: Model weights are committed to the repository
-- **No configuration files**: The system runs with a single command
-- **Deterministic output**: Same inputs always produce the same outputs (barring floating-point numerical differences)
-- **GPU acceleration**: Automatic detection and utilization of NVIDIA GPU when available
-- **CPU fallback**: Inference supported on CPU if GPU is unavailable
-
-The model checkpoint (`models/cnn_l1_best_deployed.pt`) contains all necessary parameters and metadata for immediate inference without further setup.
-
-## Repository Structure
+## 6. Repository Structure
 
 ```
 SAF/
-├── run.py                      # Official submission entry point
-├── requirements.txt            # Python dependencies
-├── README.md                   # This file
-├── configs/                    # Configuration files
-├── datasets/                   # Dataset utilities and loaders
-├── evaluation/                 # Evaluation pipeline and visual analysis
-│   ├── run.py                  # Evaluation entry point (internal use)
-│   ├── metrics/                # Metric computation modules
-│   └── analysis/               # Visual analysis and heatmap generation
-├── model/                      # Model architecture definitions
-├── models/                     # Trained model checkpoints
-│   └── cnn_l1_best_deployed.pt # Deployment checkpoint (776K parameters)
-└── scripts/                    # Utility scripts and preprocessing
+├── run.py
+├── requirements.txt
+├── README.md
+├── models/
+│   └── cnn_l1_best_deployed.pt
+└── evaluation/
+    └── ...
 ```
 
-**Key directories**:
+**Core submission** (required for judge execution):
+```
+run.py
+requirements.txt
+README.md
+models/
+```
 
-- `run.py`: Main entry point. Accepts input and output directories and invokes the complete inference pipeline.
-- `model/`: Architecture definitions for the Residual CNN model.
-- `models/`: Committed model checkpoints, including the deployment version.
-- `evaluation/`: Evaluation pipeline for objective metrics and visual error analysis. Used for benchmarking and analysis; not required for basic inference.
-- `configs/`: Configuration files and hyperparameters.
-- `datasets/`: Data loading utilities.
-- `scripts/`: Helper scripts for preprocessing and analysis.
+**Supporting evaluation and analysis** (not required for the judge command):
 
-## Reproducibility
+<details>
+<summary>Expand full <code>evaluation/</code> contents</summary>
 
-To reproduce inference on a new set of images:
+```
+evaluation/
+├── run.py                      # offline deployment pipeline
+├── visual_analysis.py          # explainability / visual comparisons
+├── metrics.py
+├── advanced_metrics.py
+├── edge_metrics.py
+├── frequency_metrics.py
+├── frequency_structure.py
+├── lpips_evaluation.py
+├── compare_baseline.py
+├── compare_model.py
+├── compare_final.py
+├── evaluate_dataset.py
+├── evaluate_restored.py
+├── evaluate_bicubic_subset.py
+├── bicubic_frequency.py
+├── check_data_range.py
+├── test_gallery.py
+└── results/
+```
+
+</details>
+
+---
+
+## 7. Installation
 
 ```bash
-python run.py <your-input-directory> <your-output-directory>
+pip install -r requirements.txt
 ```
 
-To reproduce evaluation results with ground-truth images, refer to the `evaluation/` directory documentation.
+`requirements.txt` pins the Python dependencies required to run the submission. The model checkpoint does not need to be downloaded separately; it is already included at `models/cnn_l1_best_deployed.pt`.
 
-The model used is deterministic. Given the same input and hardware, outputs should be numerically identical (within floating-point precision).
+---
 
-## Technical Notes and Limitations
+## 8. Running the Submission
 
-- **Grayscale input only**: The model expects single-channel grayscale images. Multi-channel inputs must be converted to grayscale before processing.
-- **Fixed input resolution**: Input images must be 128×128. Images of different sizes require resizing before inference.
-- **Ground-truth dependent metrics**: PSNR, SSIM, MAE, MSE, and edge error require paired ground-truth images. These metrics are not computed for deployment-only inference.
-- **Ground-truth dependent error heatmaps**: Spatial error heatmaps require ground-truth images for comparison. Without ground truth, error heatmaps cannot be generated.
-- **Output value range**: Outputs are constrained to [0, 1]. Values outside this range (including NaN and Inf) are clipped or safeguarded.
-- **Inference speed**: Hardware-dependent. GPU acceleration significantly faster than CPU-only inference.
-- **Model size**: 776,705 parameters; negligible memory footprint on modern hardware.
+```bash
+python run.py <input-dir> <output-dir>
+```
 
-## Submission Compliance
+Example:
 
-This submission adheres to the KLA hackathon requirements:
+```bash
+python run.py "path/to/input" "path/to/output"
+```
 
-- [x] `run.py` accepts input and output directory arguments
-- [x] Reads all `.npy` files from input directory
-- [x] Creates output directory automatically if necessary
-- [x] Preserves input filenames in output
-- [x] Produces grayscale output arrays
-- [x] Output values constrained to [0, 1] range
-- [x] NaN and Inf values safeguarded
-- [x] Correct target resolution (256×256)
-- [x] Model weights included locally in repository
-- [x] `requirements.txt` included and complete
-- [x] `README.md` provided with clear instructions
-- [x] No internet access required during execution
-- [x] No API keys or external model downloads required
-- [x] NVIDIA GPU compatible (CPU fallback if applicable)
-- [x] Offline-first design with no external dependencies
+`run.py` at the repository root is the judge-facing entry point. It:
 
-## Contact
+1. Validates the two required command-line arguments (input directory, output directory)
+2. Validates the input directory
+3. Creates the output directory if it does not already exist
+4. Invokes the offline deployment pipeline in `evaluation/run.py` using the current Python interpreter
+5. Passes through the input and output directories
 
-For technical questions or issues, refer to the project documentation or contact the development team.
+No interactive prompts occur during this execution path. Judges do not need to invoke `evaluation/run.py` directly.
+
+<details>
+<summary>Expected pipeline behavior</summary>
+
+1. Deployed model is located and loaded from `models/`
+2. All `.npy` files in the input directory are discovered
+3. Each image is restored
+4. Output directory is created if required
+5. Restored `.npy` files are written using the original input filenames
+6. Processing progress and timing statistics are printed
+7. `metrics.csv` and `summary.txt` are generated
+8. If ground truth is not available, GT-dependent metrics are skipped and structural explainability artifacts are produced instead
+
+</details>
+
+---
+
+## 9. Ground-Truth Evaluation (Mode 2)
+
+When corresponding ground-truth `.npy` files are available, the evaluation pipeline compares each restored image against its GT counterpart and computes:
+
+| Metric | Description |
+|---|---|
+| PSNR | Peak signal-to-noise ratio |
+| SSIM | Structural similarity |
+| MAE | Mean absolute error |
+| MSE | Mean squared error |
+| Edge Error | Edge-region reconstruction error |
+
+Aggregate results are written to `summary.txt`, including the number of evaluated pairs, the metrics above, total inference time, and average images/sec. Per-image results are written to `metrics.csv`.
+
+These metrics require corresponding ground-truth images and are **not** part of the official judge-facing deployment command — they are only produced when GT is supplied to the evaluation pipeline.
+
+---
+
+## 10. No-Ground-Truth Structural Explainability (Mode 1)
+
+The official judge command does not require ground truth:
+
+```bash
+python run.py <input-dir> <output-dir>
+```
+
+When no GT is available, SAF still performs complete restoration and writes all restored `.npy` outputs normally. GT-dependent metrics (PSNR, SSIM, MAE, MSE, Edge Error) are not computed or claimed in this mode.
+
+Instead, SAF generates a **structural explainability visualization** by comparing the degraded input and restored output using local image-gradient/structural information. The resulting figure contains three panels:
+
+1. Degraded Input
+2. Restored Output
+3. Structural Change Map
+
+The structural change map highlights regions where local image structure/detail changes between the degraded input and the restored output — brighter regions indicate stronger structural/detail change, darker regions indicate relatively little change.
+
+The accompanying `explanation.txt` records the mode as `"Mode: No Ground Truth"` and describes the structural change map in these terms.
+
+**Interpretation note:** the structural change map is an explainability visualization only. It is not a reconstruction-error map, and it is not a confidence map.
+
+---
+
+## 11. Output Artifacts
+
+| Artifact | Produced when | Description |
+|---|---|---|
+| Restored `.npy` files | Always | One per input file, same filename, 256×256 grayscale, `[0,1]` |
+| `metrics.csv` | Always | Per-image processing record; GT-dependent columns populated only when GT is supplied |
+| `summary.txt` | Always | Aggregate run statistics (timing, images/sec; GT metrics when available) |
+| Structural map / comparison figure | No-GT mode | Degraded input vs. restored output vs. structural change map |
+| `explanation.txt` | No-GT mode | States evaluation mode and explains the structural change map |
+
+---
+
+## 12. Validation and Safety Checks
+
+The inference pipeline enforces the following on every output before it is written:
+
+- Output is grayscale
+- Output values are constrained to `[0, 1]`
+- NaN and Inf values are rejected/handled
+- Output resolution matches the expected target (256 × 256)
+- Output filename matches the corresponding input filename
+- Output directory is created automatically if it does not exist
+
+---
+
+## 13. Offline and Hardware Compatibility
+
+- Runs fully offline — no internet connection required at inference time
+- No API keys required
+- No external model downloads required
+- Model checkpoint is bundled in the repository (`models/cnn_l1_best_deployed.pt`)
+- Compatible with NVIDIA GPU execution
+- CPU fallback available in the evaluation pipeline
+- No manual model configuration or user interaction required during judge execution
+
+---
+
+## 14. Limitations / Interpretation
+
+SAF distinguishes two evaluation situations, and this distinction should be read carefully:
+
+| | Compares | Produces |
+|---|---|---|
+| **Ground truth available** | Restored vs. GT | PSNR, SSIM, MAE, MSE, Edge Error |
+| **No ground truth** | Degraded input vs. Restored | Structural explainability visualization |
+
+The structural change map produced in the no-GT case does not measure correctness against an unknown ground truth, does not replace PSNR/SSIM, and is not a confidence score. It exists to make the restoration's structural behavior interpretable when quantitative evaluation is not possible.
+
+---
+
+## 15. Technical Summary
+
+```
+Task:            KLA — AI-Based Restoration of Degraded Images
+Model:           Residual CNN + PixelShuffle ×2
+Parameters:      776,705
+Input:           128×128 grayscale (.npy)
+Output:          256×256 grayscale (.npy), float32, [0,1]
+Execution:       python run.py <input-dir> <output-dir>
+Ground truth:    Optional — enables PSNR/SSIM/MAE/MSE/Edge Error
+No ground truth: Structural explainability visualization + explanation.txt
+Runtime:         Offline, no API keys, no external downloads
+Hardware:        NVIDIA GPU compatible, CPU fallback available
+```
